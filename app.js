@@ -1,46 +1,58 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const passport = require('passport');
-const session = require('express-session');
-const GitHubStrategy = require('passport-github2').Strategy;
-const path = require('path');
-const logger = require('morgan');
-const cookieParser = require('cookie-parser');
-const config = require('./config/config');
+import express from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import passport from 'passport';
+import session from 'express-session';
+import { Strategy as GitHubStrategy } from 'passport-github2';
+import path from 'path';
+import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
+import { fileURLToPath } from 'url';
+import config from './config/config.js';
+import githubRoutes from './routes/github.routes.js';
+import logger from './config/logger.js';
 
-// Import routes
-const githubRoutes = require('./routes/github.routes');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// Debug middleware
-app.use((req, res, next) => {
-  console.log('Request received:', {
-    method: req.method,
-    url: req.url,
-    headers: req.headers,
-    body: req.body
-  });
+// Configure logging
+const logRequest = (req, res, next) => {
+  const { method, url, headers, body } = req;
+  logger.info('Request received:', { method, url, headers, body });
   next();
-});
+};
+
+// Configure error logging
+const logError = (err, req, res, next) => {
+  logger.error('Error occurred:', {
+    error: err.message,
+    stack: err.stack,
+    method: req.method,
+    url: req.url
+  });
+  next(err);
+};
 
 // Middleware
-app.use(logger('dev'));
+app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
+app.use(logRequest);
 
 // CORS configuration
-app.use(cors({
+const corsOptions = {
   origin: 'http://localhost:4200',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
-}));
+};
+app.use(cors(corsOptions));
 
 // Session configuration
-app.use(session({
+const sessionConfig = {
   secret: config.session.secret,
   resave: true,
   saveUninitialized: true,
@@ -52,33 +64,38 @@ app.use(session({
     path: '/'
   },
   name: 'github.sid'
-}));
+};
+app.use(session(sessionConfig));
 
 // Passport middleware
 app.use(passport.initialize());
 app.use(passport.session());
 
-// MongoDB connection with updated options
-mongoose.connect(config.mongoUri, {
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-  family: 4
-})
-.then(() => console.log('Connected to MongoDB'))
-.catch(err => {
-  console.error('MongoDB connection error:', err);
-  process.exit(1);
-});
+// MongoDB connection with error handling
+const connectDB = async () => {
+  try {
+    await mongoose.connect(config.mongoUri, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      family: 4
+    });
+    logger.info('Connected to MongoDB');
+  } catch (err) {
+    logger.error('MongoDB connection error:', err);
+    process.exit(1);
+  }
+};
+connectDB();
 
 // Passport GitHub Strategy
-passport.use(new GitHubStrategy({
+const githubStrategy = new GitHubStrategy({
     clientID: config.github.clientID,
     clientSecret: config.github.clientSecret,
     callbackURL: config.github.callbackURL,
     scope: ['user:email', 'repo', 'read:org']
   },
-  function(accessToken, refreshToken, profile, done) {
-    console.log('GitHub Strategy callback received:', { 
+  (accessToken, refreshToken, profile, done) => {
+    logger.info('GitHub Strategy callback received:', { 
       profile: {
         id: profile.id,
         username: profile.username,
@@ -88,7 +105,6 @@ passport.use(new GitHubStrategy({
       refreshToken: !!refreshToken
     });
 
-    // Create a user object that will be stored in the session
     const user = {
       id: profile.id,
       accessToken,
@@ -104,38 +120,39 @@ passport.use(new GitHubStrategy({
 
     return done(null, user);
   }
-));
+);
+
+passport.use(githubStrategy);
 
 passport.serializeUser((user, done) => {
-  console.log('Serializing user:', {
+  logger.info('Serializing user:', {
     id: user.profile.id,
     username: user.profile.username
   });
-  // Store the entire user object in the session
   done(null, user);
 });
 
 passport.deserializeUser((user, done) => {
-  console.log('Deserializing user:', {
+  logger.info('Deserializing user:', {
     id: user.profile.id,
     username: user.profile.username
   });
-  // Return the user object as is
   done(null, user);
 });
 
-// Add debug middleware for session
-app.use((req, res, next) => {
-  console.log('Session state:', {
+// Session debug middleware
+const sessionDebug = (req, res, next) => {
+  logger.debug('Session state:', {
     id: req.session.id,
     cookie: req.session.cookie,
     user: req.user,
     isAuthenticated: req.isAuthenticated()
   });
   next();
-});
+};
+app.use(sessionDebug);
 
-// Test routes
+// Routes
 app.get('/', (req, res) => {
   res.json({ message: 'Server is running' });
 });
@@ -148,12 +165,11 @@ app.get('/test-auth', (req, res) => {
   });
 });
 
-// Routes
 app.use('/api/github', githubRoutes);
 
 // 404 handler
-app.use((req, res, next) => {
-  console.log('404 Not Found:', {
+app.use((req, res) => {
+  logger.warn('404 Not Found:', {
     method: req.method,
     url: req.url,
     headers: req.headers,
@@ -166,12 +182,12 @@ app.use((req, res, next) => {
 });
 
 // Error handling
+app.use(logError);
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
   res.status(500).json({
-    error: 'Something broke!',
-    message: err.message
+    error: 'Internal Server Error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
   });
 });
 
-module.exports = app;
+export default app;

@@ -1,5 +1,5 @@
-const axios = require('axios');
-const logger = require('../config/logger');
+import axios from 'axios';
+import logger from '../config/logger.js';
 
 class GitHubHelper {
   constructor(accessToken) {
@@ -7,7 +7,7 @@ class GitHubHelper {
     this.api = axios.create({
       baseURL: 'https://api.github.com',
       headers: {
-        'Authorization': `token ${accessToken}`,
+        'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/vnd.github.v3+json'
       }
     });
@@ -220,4 +220,4 @@ class GitHubHelper {
   }
 }
 
-module.exports = GitHubHelper; 
+export default GitHubHelper; 

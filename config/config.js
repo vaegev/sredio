@@ -1,6 +1,7 @@
-require('dotenv').config();
+import dotenv from 'dotenv';
+dotenv.config();
 
-module.exports = {
+const config = {
   port: process.env.PORT || 3000,
   mongoUri: process.env.MONGODB_URI || 'mongodb://172.17.0.2:27017/github-integration',
   github: {
@@ -13,4 +14,6 @@ module.exports = {
     resave: false,
     saveUninitialized: false
   }
-}; 
+};
+
+export default config; 

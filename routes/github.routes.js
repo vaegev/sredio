@@ -1,11 +1,13 @@
-const express = require('express');
-const passport = require('passport');
-const router = express.Router();
-const githubController = require('../controllers/github.controller');
+import express from 'express';
+import passport from 'passport';
+import logger from '../config/logger.js';
+import * as githubController from '../controllers/github.controller.js';
 
-// Debug middleware for GitHub routes
-router.use((req, res, next) => {
-  console.log('GitHub Route:', {
+const router = express.Router();
+
+// Middleware for logging GitHub routes
+const logGitHubRoute = (req, res, next) => {
+  logger.info('GitHub Route:', {
     method: req.method,
     url: req.url,
     authenticated: req.isAuthenticated(),
@@ -13,11 +15,11 @@ router.use((req, res, next) => {
     user: req.user
   });
   next();
-});
+};
 
-// Check if user is authenticated
+// Authentication middleware
 const isAuthenticated = (req, res, next) => {
-  console.log('Checking authentication:', {
+  logger.debug('Checking authentication:', {
     isAuthenticated: req.isAuthenticated(),
     session: req.session,
     user: req.user
@@ -32,10 +34,13 @@ const isAuthenticated = (req, res, next) => {
   });
 };
 
+// Apply logging middleware to all routes
+router.use(logGitHubRoute);
+
 // GitHub OAuth routes
 router.get('/auth/github',
   (req, res, next) => {
-    console.log('Initiating GitHub OAuth...');
+    logger.info('Initiating GitHub OAuth...');
     next();
   },
   passport.authenticate('github', { 
@@ -46,7 +51,7 @@ router.get('/auth/github',
 
 router.get('/auth/github/callback',
   (req, res, next) => {
-    console.log('GitHub OAuth callback received:', {
+    logger.info('GitHub OAuth callback received:', {
       query: req.query,
       session: req.session
     });
@@ -57,7 +62,7 @@ router.get('/auth/github/callback',
     session: true
   }),
   (req, res, next) => {
-    console.log('After GitHub authentication:', {
+    logger.info('After GitHub authentication:', {
       isAuthenticated: req.isAuthenticated(),
       session: req.session,
       user: req.user
@@ -70,7 +75,7 @@ router.get('/auth/github/callback',
 // GitHub integration routes
 router.get('/status', 
   (req, res, next) => {
-    console.log('Checking integration status:', {
+    logger.debug('Checking integration status:', {
       authenticated: req.isAuthenticated(),
       session: {
         id: req.session.id,
@@ -88,7 +93,7 @@ router.get('/status',
 router.delete('/remove', 
   isAuthenticated,
   (req, res, next) => {
-    console.log('Removing integration:', {
+    logger.info('Removing integration:', {
       user: req.user
     });
     next();
@@ -99,7 +104,7 @@ router.delete('/remove',
 router.get('/data', 
   isAuthenticated,
   (req, res, next) => {
-    console.log('Fetching GitHub data:', {
+    logger.info('Fetching GitHub data:', {
       user: req.user
     });
     next();
@@ -107,4 +112,18 @@ router.get('/data',
   githubController.fetchGitHubData
 );
 
-module.exports = router; 
+// Error handling middleware for GitHub routes
+router.use((err, req, res, next) => {
+  logger.error('GitHub route error:', {
+    error: err.message,
+    stack: err.stack,
+    method: req.method,
+    url: req.url
+  });
+  res.status(500).json({
+    error: 'GitHub Integration Error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred with GitHub integration'
+  });
+});
+
+export default router; 

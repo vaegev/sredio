@@ -1,5 +1,12 @@
-const winston = require('winston');
-const path = require('path');
+import winston from 'winston';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Create logs directory if it doesn't exist
+const logsDir = path.join(__dirname, '../logs');
 
 // Define log format
 const logFormat = winston.format.combine(
@@ -10,40 +17,35 @@ const logFormat = winston.format.combine(
 
 // Create logger instance
 const logger = winston.createLogger({
-  level: 'error', // Only log errors by default
+  level: process.env.LOG_LEVEL || 'info',
   format: logFormat,
   transports: [
     // Write all errors to error.log
     new winston.transports.File({
-      filename: path.join(__dirname, '../logs/error.log'),
+      filename: path.join(logsDir, 'error.log'),
       level: 'error',
       maxsize: 5242880, // 5MB
       maxFiles: 5
     }),
     // Write performance metrics to performance.log
     new winston.transports.File({
-      filename: path.join(__dirname, '../logs/performance.log'),
+      filename: path.join(logsDir, 'combined.log'),
       level: 'info',
       maxsize: 5242880, // 5MB
       maxFiles: 5
+    }),
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
     })
   ]
 });
 
-// Add console transport only in development
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple()
-    ),
-    level: 'error' // Only show errors in console
-  }));
-}
-
 // Performance logging helper
-logger.performance = (message, metadata) => {
-  logger.info(message, { ...metadata, type: 'performance' });
+logger.performance = (message, meta = {}) => {
+  logger.info(message, { ...meta, type: 'performance' });
 };
 
-module.exports = logger; 
+export default logger; 

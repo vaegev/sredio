@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const githubIntegrationSchema = new mongoose.Schema({
   userId: {
@@ -28,4 +28,4 @@ const githubIntegrationSchema = new mongoose.Schema({
   }
 });
 
-module.exports = mongoose.model('GitHubIntegration', githubIntegrationSchema); 
+export default mongoose.model('GitHubIntegration', githubIntegrationSchema); 
