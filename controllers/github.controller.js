@@ -22,7 +22,8 @@ const validateAccessToken = async (accessToken) => {
     const response = await axios.get('https://api.github.com/user', {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/vnd.github.v3+json'
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'GitHub-Integration-App'
       }
     });
     return response.status === 200;
@@ -42,22 +43,34 @@ export const getIntegrationStatus = async (req, res) => {
     const userId = validateUser(req);
     const integration = await GitHubIntegration.findOne({ userId });
     
-    if (integration?.accessToken) {
+    if (!integration?.accessToken) {
+      logger.info('No GitHub integration found', { userId });
+      return res.json({ connected: false });
+    }
+
+    try {
       const isValid = await validateAccessToken(integration.accessToken);
       if (!isValid) {
         await GitHubIntegration.deleteOne({ userId });
         logger.warn('Removed invalid GitHub integration', { userId });
         return res.json({ connected: false });
       }
+    } catch (error) {
+      logger.error('Token validation failed', {
+        error: error.message,
+        userId
+      });
+      await GitHubIntegration.deleteOne({ userId });
+      return res.json({ connected: false });
     }
     
     logger.performance('Checked integration status', {
       userId,
-      hasIntegration: !!integration,
+      hasIntegration: true,
       duration: Date.now() - startTime
     });
     
-    res.json({ connected: !!integration });
+    res.json({ connected: true });
   } catch (error) {
     logger.error(ERROR_MESSAGES.STATUS_ERROR, {
       error: error.message,
@@ -172,7 +185,7 @@ export const fetchGitHubOrgs = async (req, res) => {
       userId: req.user?.id,
       duration: Date.now() - startTime
     });
-    res.status(error.message === ERROR_MESSAGES.NOT_AUTHENTICATED ? 401 : 500)
+    res.status(error.message === ERROR_MESSAGES.NOT_AUTHENTICATED || error.message === ERROR_MESSAGES.INVALID_ACCESS_TOKEN ? 401 : 500)
        .json({ error: ERROR_MESSAGES.FETCH_ERROR });
   }
 };
@@ -275,12 +288,23 @@ export const handleCallback = async (req, res) => {
       throw new Error(ERROR_MESSAGES.INVALID_ACCESS_TOKEN);
     }
 
-    const integration = new GitHubIntegration({
-      userId,
-      accessToken,
-      lastUpdated: new Date()
-    });
-    await integration.save();
+    // Check if integration already exists
+    let integration = await GitHubIntegration.findOne({ userId });
+    
+    if (integration) {
+      // Update existing integration
+      integration.accessToken = accessToken;
+      integration.lastUpdated = new Date();
+      await integration.save();
+    } else {
+      // Create new integration
+      integration = new GitHubIntegration({
+        userId,
+        accessToken,
+        lastUpdated: new Date()
+      });
+      await integration.save();
+    }
 
     logger.performance('Completed GitHub OAuth process', {
       userId,
