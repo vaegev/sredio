@@ -2,6 +2,7 @@ import express from 'express';
 import passport from 'passport';
 import logger from '../config/logger.js';
 import * as githubController from '../controllers/github.controller.js';
+import {fetchOrgData, fetchOrgRepoCommits} from "../controllers/github.controller.js";
 
 const router = express.Router();
 
@@ -110,6 +111,40 @@ router.get('/data',
     next();
   },
   githubController.fetchGitHubData
+);
+
+
+router.get('/data/orgs',
+  isAuthenticated,
+  (req, res, next) => {
+    logger.info('Fetching GitHub data:', {
+      user: req.user
+    });
+    next();
+  },
+  githubController.fetchGitHubOrgs
+);
+
+router.get('/data/org/:org',
+  isAuthenticated,
+  (req, res, next) => {
+    logger.info('Fetching GitHub data:', {
+      user: req.user
+    });
+    next();
+  },
+  githubController.fetchOrgData
+);
+
+router.get('/data/org/:org/repo/:repo',
+  isAuthenticated,
+  (req, res, next) => {
+    logger.info('Fetching GitHub data:', {
+      user: req.user
+    });
+    next();
+  },
+  githubController.fetchOrgRepoCommits
 );
 
 // Error handling middleware for GitHub routes

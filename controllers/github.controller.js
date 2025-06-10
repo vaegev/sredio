@@ -31,39 +31,9 @@ const validateAccessToken = async (accessToken) => {
       error: error.message,
       response: error.response?.data
     });
-    return false;
+    throw new Error(ERROR_MESSAGES.INVALID_ACCESS_TOKEN);
   }
 };
-
-// Store GitHub data in MongoDB
-async function storeData(data, userId, accessToken) {
-  const startTime = Date.now();
-  try {
-    await GitHubIntegration.deleteMany({ userId });
-    const integration = new GitHubIntegration({
-      userId,
-      accessToken,
-      data,
-      lastUpdated: new Date()
-    });
-    await integration.save();
-    
-    logger.performance('Stored GitHub data', {
-      userId,
-      collections: Object.keys(data).length,
-      records: Object.values(data).reduce((acc, curr) => acc + curr.length, 0),
-      duration: Date.now() - startTime
-    });
-  } catch (error) {
-    logger.error('Failed to store GitHub data', {
-      error: error.message,
-      stack: error.stack,
-      userId,
-      duration: Date.now() - startTime
-    });
-    throw new Error('Failed to store GitHub data');
-  }
-}
 
 // Get integration status
 export const getIntegrationStatus = async (req, res) => {
@@ -89,14 +59,14 @@ export const getIntegrationStatus = async (req, res) => {
     
     res.json({ connected: !!integration });
   } catch (error) {
-    logger.error('Failed to get integration status', {
+    logger.error(ERROR_MESSAGES.STATUS_ERROR, {
       error: error.message,
       stack: error.stack,
       userId: req.user?.id,
       duration: Date.now() - startTime
     });
-    res.status(error.message === 'Not authenticated' ? 401 : 500)
-       .json({ error: 'Failed to get integration status' });
+    res.status(error.message === ERROR_MESSAGES.NOT_AUTHENTICATED ? 401 : 500)
+       .json({ error: ERROR_MESSAGES.STATUS_ERROR });
   }
 };
 
@@ -114,14 +84,14 @@ export const removeIntegration = async (req, res) => {
     
     res.json({ message: 'Integration removed successfully' });
   } catch (error) {
-    logger.error('Failed to remove integration', {
+    logger.error(ERROR_MESSAGES.REMOVE_ERROR, {
       error: error.message,
       stack: error.stack,
       userId: req.user?.id,
       duration: Date.now() - startTime
     });
-    res.status(error.message === 'Not authenticated' ? 401 : 500)
-       .json({ error: 'Failed to remove integration' });
+    res.status(error.message === ERROR_MESSAGES.NOT_AUTHENTICATED ? 401 : 500)
+       .json({ error: ERROR_MESSAGES.REMOVE_ERROR });
   }
 };
 
@@ -133,8 +103,8 @@ export const fetchGitHubData = async (req, res) => {
     const integration = await GitHubIntegration.findOne({ userId });
     
     if (!integration?.accessToken) {
-      logger.error('No GitHub integration found', { userId });
-      return res.status(404).json({ error: 'GitHub integration not found' });
+      logger.error(ERROR_MESSAGES.INTEGRATION_NOT_FOUND, { userId });
+      return res.status(404).json({ error: ERROR_MESSAGES.INTEGRATION_NOT_FOUND });
     }
 
     const isValid = await validateAccessToken(integration.accessToken);
@@ -146,8 +116,7 @@ export const fetchGitHubData = async (req, res) => {
 
     const githubHelper = new GitHubHelper(integration.accessToken);
     const data = await githubHelper.getAllData();
-    await storeData(data, userId, integration.accessToken);
-    
+
     logger.performance('Fetched GitHub data', {
       userId,
       duration: Date.now() - startTime,
@@ -156,14 +125,136 @@ export const fetchGitHubData = async (req, res) => {
     
     res.json(data);
   } catch (error) {
-    logger.error('Failed to fetch GitHub data', {
+    logger.error(ERROR_MESSAGES.FETCH_ERROR, {
       error: error.message,
       stack: error.stack,
       userId: req.user?.id,
       duration: Date.now() - startTime
     });
     res.status(error.message === 'Not authenticated' ? 401 : 500)
-       .json({ error: 'Failed to fetch GitHub data' });
+       .json({ error: ERROR_MESSAGES.FETCH_ERROR });
+  }
+};
+
+// Fetch GitHub data
+export const fetchGitHubOrgs = async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const userId = validateUser(req);
+    const integration = await GitHubIntegration.findOne({ userId });
+
+    if (!integration?.accessToken) {
+      logger.error(ERROR_MESSAGES.INTEGRATION_NOT_FOUND, { userId });
+      return res.status(404).json({ error: ERROR_MESSAGES.INTEGRATION_NOT_FOUND });
+    }
+
+    const isValid = await validateAccessToken(integration.accessToken);
+    if (!isValid) {
+      await GitHubIntegration.deleteOne({ userId });
+      logger.warn('Removed invalid GitHub integration', { userId });
+      return res.status(401).json({ error: 'GitHub integration is invalid' });
+    }
+
+    const githubHelper = new GitHubHelper(integration.accessToken);
+    const data = await githubHelper.getOrganizations();
+
+    logger.performance('Fetched GitHub data', {
+      userId,
+      duration: Date.now() - startTime,
+      dataSize: JSON.stringify(data).length
+    });
+
+    res.json(data);
+  } catch (error) {
+    logger.error(ERROR_MESSAGES.FETCH_ERROR, {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.id,
+      duration: Date.now() - startTime
+    });
+    res.status(error.message === 'Not authenticated' ? 401 : 500)
+       .json({ error: ERROR_MESSAGES.FETCH_ERROR });
+  }
+};
+// Fetch GitHub data
+export const fetchOrgData = async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const userId = validateUser(req);
+    const integration = await GitHubIntegration.findOne({ userId });
+
+    if (!integration?.accessToken) {
+      logger.error(ERROR_MESSAGES.INTEGRATION_NOT_FOUND, { userId });
+      return res.status(404).json({ error: ERROR_MESSAGES.INTEGRATION_NOT_FOUND });
+    }
+
+    const isValid = await validateAccessToken(integration.accessToken);
+    if (!isValid) {
+      await GitHubIntegration.deleteOne({ userId });
+      logger.warn('Removed invalid GitHub integration', { userId });
+      return res.status(401).json({ error: 'GitHub integration is invalid' });
+    }
+
+    const githubHelper = new GitHubHelper(integration.accessToken);
+    const data = await githubHelper.getOrganizationRepos(req.params.org);
+
+    logger.performance('Fetched GitHub data', {
+      userId,
+      duration: Date.now() - startTime,
+      dataSize: JSON.stringify(data).length
+    });
+
+    res.json(data);
+  } catch (error) {
+    logger.error(ERROR_MESSAGES.FETCH_ERROR, {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.id,
+      duration: Date.now() - startTime
+    });
+    res.status(error.message === 'Not authenticated' ? 401 : 500)
+       .json({ error: ERROR_MESSAGES.FETCH_ERROR });
+  }
+};
+
+// Fetch GitHub data
+export const fetchOrgRepoCommits = async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const userId = validateUser(req);
+    const integration = await GitHubIntegration.findOne({ userId });
+
+    if (!integration?.accessToken) {
+      logger.error(ERROR_MESSAGES.INTEGRATION_NOT_FOUND, { userId });
+      return res.status(404).json({ error: ERROR_MESSAGES.INTEGRATION_NOT_FOUND });
+    }
+
+    const isValid = await validateAccessToken(integration.accessToken);
+    if (!isValid) {
+      await GitHubIntegration.deleteOne({ userId });
+      logger.warn('Removed invalid GitHub integration', { userId });
+      return res.status(401).json({ error: 'GitHub integration is invalid' });
+    }
+
+    const githubHelper = new GitHubHelper(integration.accessToken);
+    const data = await githubHelper.getRepoCommits(req.params.org, req.params.repo);
+
+    logger.performance('Fetched GitHub data', {
+      userId,
+      duration: Date.now() - startTime,
+      dataSize: JSON.stringify(data).length
+    });
+
+    res.json(data);
+  } catch (error) {
+    logger.error(ERROR_MESSAGES.FETCH_ERROR, {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.id,
+      duration: Date.now() - startTime
+    });
+    res.status(error.message === 'Not authenticated' ? 401 : 500)
+       .json({ error: ERROR_MESSAGES.FETCH_ERROR });
   }
 };
 
@@ -172,9 +263,15 @@ export const handleCallback = async (req, res) => {
   const startTime = Date.now();
   try {
     const userId = validateUser(req);
-    const accessToken = validateAccessToken(req.user);
+    const accessToken = req.user?.accessToken;
 
     if (!accessToken) {
+      throw new Error('No access token found');
+    }
+
+    // Validate the token
+    const isValid = await validateAccessToken(accessToken);
+    if (!isValid) {
       throw new Error('Invalid access token');
     }
 
@@ -200,6 +297,6 @@ export const handleCallback = async (req, res) => {
       session: req.session,
       duration: Date.now() - startTime
     });
-    res.redirect(`${FRONTEND_URL}/integration-error`);
+    res.redirect(`${FRONTEND_URL}`);
   }
 }; 

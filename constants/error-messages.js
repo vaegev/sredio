@@ -5,5 +5,6 @@ export const ERROR_MESSAGES = {
     STORAGE_ERROR: 'Failed to store GitHub data',
     FETCH_ERROR: 'Failed to fetch GitHub data',
     REMOVE_ERROR: 'Failed to remove integration',
-    STATUS_ERROR: 'Failed to get integration status'
+    STATUS_ERROR: 'Failed to get integration status',
+    INVALID_ACCESS_TOKEN: 'Invalid access token'
   };
