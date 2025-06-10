@@ -27,7 +27,7 @@ const validateAccessToken = async (accessToken) => {
     });
     return response.status === 200;
   } catch (error) {
-    logger.error('Invalid access token', {
+    logger.error(ERROR_MESSAGES.INVALID_ACCESS_TOKEN, {
       error: error.message,
       response: error.response?.data
     });
@@ -131,7 +131,7 @@ export const fetchGitHubData = async (req, res) => {
       userId: req.user?.id,
       duration: Date.now() - startTime
     });
-    res.status(error.message === 'Not authenticated' ? 401 : 500)
+    res.status(error.message === ERROR_MESSAGES.NOT_AUTHENTICATED ? 401 : 500)
        .json({ error: ERROR_MESSAGES.FETCH_ERROR });
   }
 };
@@ -172,7 +172,7 @@ export const fetchGitHubOrgs = async (req, res) => {
       userId: req.user?.id,
       duration: Date.now() - startTime
     });
-    res.status(error.message === 'Not authenticated' ? 401 : 500)
+    res.status(error.message === ERROR_MESSAGES.NOT_AUTHENTICATED ? 401 : 500)
        .json({ error: ERROR_MESSAGES.FETCH_ERROR });
   }
 };
@@ -212,7 +212,7 @@ export const fetchOrgData = async (req, res) => {
       userId: req.user?.id,
       duration: Date.now() - startTime
     });
-    res.status(error.message === 'Not authenticated' ? 401 : 500)
+    res.status(error.message === ERROR_MESSAGES.NOT_AUTHENTICATED ? 401 : 500)
        .json({ error: ERROR_MESSAGES.FETCH_ERROR });
   }
 };
@@ -253,7 +253,7 @@ export const fetchOrgRepoCommits = async (req, res) => {
       userId: req.user?.id,
       duration: Date.now() - startTime
     });
-    res.status(error.message === 'Not authenticated' ? 401 : 500)
+    res.status(error.message === ERROR_MESSAGES.NOT_AUTHENTICATED ? 401 : 500)
        .json({ error: ERROR_MESSAGES.FETCH_ERROR });
   }
 };
@@ -266,13 +266,13 @@ export const handleCallback = async (req, res) => {
     const accessToken = req.user?.accessToken;
 
     if (!accessToken) {
-      throw new Error('No access token found');
+      throw new Error(ERROR_MESSAGES.NO_ACCESS_TOKEN);
     }
 
     // Validate the token
     const isValid = await validateAccessToken(accessToken);
     if (!isValid) {
-      throw new Error('Invalid access token');
+      throw new Error(ERROR_MESSAGES.INVALID_ACCESS_TOKEN);
     }
 
     const integration = new GitHubIntegration({
